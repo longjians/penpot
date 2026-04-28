@@ -4,12 +4,12 @@
    [app.common.data.macros :as dm]
    [app.common.schema :as sm]
    [app.common.time :as ct]
-   [app.common.uri :as u]
    [app.config :as cf]
    [app.main.data.auth :as da]
    [app.main.data.event :as ev]
    [app.main.data.modal :as modal]
    [app.main.data.nitrate :as dnt]
+   [app.main.data.notifications :as ntf]
    [app.main.refs :as refs]
    [app.main.router :as rt]
    [app.main.store :as st]
@@ -39,7 +39,8 @@
            cta-link-with-icon
            editors
            recommended
-           show-button-cta]}]
+           show-button-cta
+           inline-error]}]
 
   [:div {:class (stl/css-case :plan-card true
                               :plan-card-highlight recommended)}
@@ -82,7 +83,9 @@
                   :on-click cta-link} cta-text])
    (when (and cta-link-trial cta-text-trial)
      [:button {:class (stl/css :cta-button :bottom-link)
-               :on-click cta-link-trial} cta-text-trial])])
+               :on-click cta-link-trial} cta-text-trial])
+   (when inline-error
+     [:p {:class (stl/css :inline-error)} inline-error])])
 
 (defn- make-management-form-schema [min-editors]
   [:map {:title "SeatsForm"}
@@ -408,7 +411,31 @@
         show-subscription-success-modal?
         (or (= params-subscription "subscribed-to-penpot-unlimited")
             (= params-subscription "subscribed-to-penpot-enterprise")
-            (= params-subscription "subscribed-to-penpot-nitrate"))
+            (= params-subscription dnt/nitrate-success-token))
+
+        nitrate-toast-message
+        (condp = params-subscription
+          dnt/nitrate-checkout-finish-error-token (tr "subscription.error.nitrate.checkout-finish-failed")
+          dnt/nitrate-checkout-cancelled-token    (tr "subscription.error.nitrate.checkout-cancelled")
+          nil)
+
+        nitrate-toast-level
+        (condp = params-subscription
+          dnt/nitrate-checkout-cancelled-token :info
+          (when nitrate-toast-message :error))
+
+        show-nitrate-start-error?
+        (= params-subscription dnt/nitrate-checkout-error-token)
+
+        nitrate-start-error*
+        (mf/use-state false)
+
+        nitrate-start-error?
+        (deref nitrate-start-error*)
+
+        nitrate-start-error-message
+        (when nitrate-start-error?
+          (tr "subscription.error.nitrate.checkout-failed"))
 
         success-modal-is-trial?
         (-> route :params :query :trial)
@@ -480,10 +507,26 @@
     (mf/with-effect [authenticated?
                      show-subscription-success-modal?
                      show-trial-subscription-modal?
+                     show-nitrate-start-error?
                      success-modal-is-trial?
+                     nitrate-toast-message
+                     nitrate-toast-level
                      subscription]
       (when ^boolean authenticated?
         (cond
+          (some? nitrate-toast-message)
+          (st/emit!
+           (ntf/show {:content nitrate-toast-message
+                      :type :toast
+                      :level nitrate-toast-level
+                      :timeout 7000})
+           (rt/nav :settings-subscription {} {::rt/replace true}))
+
+          ^boolean show-nitrate-start-error?
+          (do
+            (reset! nitrate-start-error* true)
+            (st/emit! (rt/nav :settings-subscription {} {::rt/replace true})))
+
           ^boolean show-trial-subscription-modal?
 
           (st/emit!
@@ -500,7 +543,7 @@
 
           ^boolean show-subscription-success-modal?
           (st/emit!
-           (if (= params-subscription "subscribed-to-penpot-nitrate")
+           (if (= params-subscription dnt/nitrate-success-token)
              (modal/show :nitrate-success {})
              (modal/show :subscription-success
                          {:subscription-name (if (= params-subscription "subscribed-to-penpot-unlimited")
@@ -661,7 +704,8 @@
                          :cta-link (if (= subscription-type "unlimited") #(open-contact-sales-modal subscription-type "Nitrate") #(open-subscription-modal "nitrate" subscription))
                          :cta-text-with-icon (tr "subscription.settings.more-information")
                          :cta-link-with-icon go-to-pricing-page
-                         :show-button-cta (not nitrate-license)}])]]]))
+                         :show-button-cta (not nitrate-license)
+                         :inline-error nitrate-start-error-message}])]]]))
 
 
 (def ^:private schema:nitrate-form
@@ -689,12 +733,8 @@
          (mf/deps form)
          (fn []
            (let [subscription (-> @form :clean-data :subscription name)
-                 return-url   (dm/str
-                               (rt/get-current-href)
-                               "?"
-                               (u/map->query-string
-                                {:subscription "subscribed-to-penpot-nitrate"}))]
-             (dnt/go-to-buy-nitrate-license subscription return-url))))]
+                 callbacks    (dnt/build-nitrate-callback-urls (rt/get-current-href))]
+             (dnt/go-to-buy-nitrate-license subscription callbacks))))]
 
     [:div {:class (stl/css :modal-overlay)}
      [:div {:class (stl/css :modal-dialog)}

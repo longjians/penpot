@@ -13,6 +13,7 @@
    [app.util.i18n :refer [tr]]
    [app.util.storage :as storage]
    [beicon.v2.core :as rx]
+   [clojure.string :as str]
    [potok.v2.core :as ptk]))
 
 (def ^:private nitrate-entry-active-key ::nitrate-entry-active)
@@ -74,12 +75,52 @@
   (let [href (dm/str "/control-center/licenses/billing?callback=" (js/encodeURIComponent go-to-subscription-url))]
     (st/emit! (rt/nav-raw :href href))))
 
+(def nitrate-success-token "subscribed-to-penpot-nitrate")
+(def nitrate-checkout-error-token "nitrate-checkout-error")
+(def nitrate-checkout-finish-error-token "nitrate-checkout-finish-error")
+(def nitrate-checkout-cancelled-token "nitrate-checkout-cancelled")
+
+(defn- append-query-param
+  [url key value]
+  (let [parsed   (u/uri url)
+        fragment (:fragment parsed)]
+    (if (str/blank? fragment)
+      (-> parsed
+          (update :query (fn [q]
+                           (-> (u/query-string->map (or q ""))
+                               (assoc (name key) value)
+                               u/map->query-string)))
+          str)
+      (let [new-frag (-> (u/parse fragment)
+                         (update :query (fn [q]
+                                          (-> (u/query-string->map (or q ""))
+                                              (assoc (name key) value)
+                                              u/map->query-string)))
+                         str)]
+        (-> parsed
+            (assoc :fragment new-frag)
+            str)))))
+
+(defn build-nitrate-callback-urls
+  "Build the success/error/cancel callback URLs from a base URL by appending
+  a `subscription` query param identifying the outcome."
+  [base-url]
+  (let [build (fn [token]
+                (append-query-param base-url :subscription token))]
+    {:success-callback      (build nitrate-success-token)
+     :error-callback        (build nitrate-checkout-error-token)
+     :finish-error-callback (build nitrate-checkout-finish-error-token)
+     :cancel-callback       (build nitrate-checkout-cancelled-token)}))
+
 (defn go-to-buy-nitrate-license
   ([subscription]
    (go-to-buy-nitrate-license subscription nil))
-  ([subscription callback]
+  ([subscription {:keys [success-callback error-callback finish-error-callback cancel-callback]}]
    (let [params (cond-> {:subscription subscription}
-                  callback (assoc :callback callback))
+                  success-callback      (assoc :callback success-callback)
+                  error-callback        (assoc :error_callback error-callback)
+                  finish-error-callback (assoc :finish_error_callback finish-error-callback)
+                  cancel-callback       (assoc :cancel_callback cancel-callback))
          href   (dm/str "/control-center/licenses/start?" (u/map->query-string params))]
      (st/emit! (rt/nav-raw :href href)))))
 
