@@ -475,13 +475,6 @@
       :service-unavailable
       [:> service-unavailable*]
 
-      :wasm-error
-      (case (get data :code)
-        :webgl-context-lost
-        [:> webgl-context-lost*]
-
-        [:> internal-error* props])
-
       [:> internal-error* props])))
 
 (mf/defc context-wrapper*
