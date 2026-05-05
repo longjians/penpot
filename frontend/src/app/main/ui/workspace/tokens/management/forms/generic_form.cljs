@@ -13,6 +13,7 @@
    [app.main.constants :refer [max-input-length]]
    [app.main.data.helpers :as dh]
    [app.main.data.modal :as modal]
+   [app.main.data.style-dictionary :as sd]
    [app.main.data.workspace.tokens.application :as dwta]
    [app.main.data.workspace.tokens.errors :as wte]
    [app.main.data.workspace.tokens.library-edit :as dwtl]
@@ -83,19 +84,24 @@
 
         token-title (str/lower (:title token-properties))
 
-        tokens (mf/deref refs/workspace-all-tokens-map)
+        tokens-lib
+        (mf/deref refs/tokens-lib)
 
-        tokens-in-selected-set
-        (mf/deref refs/workspace-all-tokens-in-selected-set)
+        active-tokens-force-set
+        (mf/with-memo [tokens-lib selected-token-set-id]
 
-        tokens
-        (mf/with-memo [tokens tokens-in-selected-set token]
-          ;; Ensure that the resolved value uses the currently editing token
-          ;; even if the name has been overriden by a token with the same name
-          ;; in another set below.
-          (cond-> (merge tokens tokens-in-selected-set)
+          (cond-> (if (and tokens-lib selected-token-set-id)
+                    (ctob/get-tokens-in-active-sets-force tokens-lib selected-token-set-id)
+                    {})
+            ;; Ensure that the resolved value uses the currently editing token
+            ;; even if the name has been overriden by a token with the same name
+            ;; in another set below.
             (and (:name token) (:value token))
             (assoc (:name token) token)))
+
+        tokens
+        (sd/use-resolved-tokens* active-tokens-force-set)
+
 
         active-tokens-by-type
         (mf/with-memo [tokens]

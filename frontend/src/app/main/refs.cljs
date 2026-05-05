@@ -492,9 +492,6 @@
 (def workspace-active-theme-paths
   (l/derived (d/nilf ctob/get-active-theme-paths) tokens-lib))
 
-(def workspace-all-tokens-map
-  (l/derived (d/nilf ctob/get-all-tokens-map) tokens-lib))
-
 (defn token-sets-at-path-all-active
   [group-path]
   (l/derived
@@ -505,10 +502,6 @@
 
 (def workspace-active-theme-paths-no-hidden
   (l/derived #(disj % ctob/hidden-theme-path) workspace-active-theme-paths))
-
-;; FIXME: deprecated, it should not be implemented with ref (still used in form)
-(def workspace-active-theme-sets-tokens
-  (l/derived #(or (some-> % ctob/get-tokens-in-active-sets) {}) tokens-lib))
 
 (def workspace-token-in-selected-set
   (fn [token-id]
