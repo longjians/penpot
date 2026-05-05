@@ -702,7 +702,21 @@
                            (rx/map #(array pos %)))))))]
          (if (empty? shapes)
            (rx/of (finish-transform))
-           (let [move-stream
+           ;; Per-gesture caches: `shapes`/`objects`/`libraries` are
+           ;; stable for the gesture, so build once and thread through.
+           (let [parent-validation-cache
+                 (ctn/parent-validation-cache objects shapes libraries)
+
+                 subtree-ids-by-id
+                 (into {}
+                       (map (fn [id]
+                              [id (cfh/get-children-ids-with-self objects id)]))
+                       ids)
+
+                 selection-rect-cache
+                 (volatile! nil)
+
+                 move-stream
                  (->> position
                       ;; We ask for the snap position but we continue even if the result is not available
                       (rx/with-latest-from snap-delta)
@@ -717,7 +731,7 @@
                          (let [position         (gpt/add from-position move-vector)
                                exclude-frames   (if mod? exclude-frames exclude-frames-siblings)
                                target-frame     (ctst/top-nested-frame objects position exclude-frames)
-                               [target-frame _] (ctn/find-valid-parent-and-frame-ids target-frame objects shapes false libraries)
+                               [target-frame _] (ctn/find-valid-parent-and-frame-ids target-frame objects shapes false libraries parent-validation-cache)
                                flex-layout?     (ctl/flex-layout? objects target-frame)
                                grid-layout?     (ctl/grid-layout? objects target-frame)
                                drop-index       (when flex-layout? (gslf/get-drop-index target-frame objects position))
@@ -766,7 +780,10 @@
                        (rx/take-until duplicate-stopper)
                        (rx/map
                         (fn [[modifiers snap-ignore-axis]]
-                          (dwm/set-wasm-modifiers modifiers :snap-ignore-axis snap-ignore-axis))))
+                          (dwm/set-wasm-modifiers modifiers
+                                                  :snap-ignore-axis snap-ignore-axis
+                                                  :subtree-ids-by-id subtree-ids-by-id
+                                                  :selection-rect-cache selection-rect-cache))))
 
                   (->> move-stream
                        (rx/with-latest-from ms/mouse-position-alt)
@@ -791,7 +808,8 @@
                              (dwu/start-undo-transaction undo-id)
                              (dwm/apply-wasm-modifiers modifiers
                                                        :snap-ignore-axis snap-ignore-axis
-                                                       :undo-transation? false)
+                                                       :undo-transation? false
+                                                       :subtree-ids-by-id subtree-ids-by-id)
                              (move-shapes-to-frame ids target-frame drop-index drop-cell)
                              (finish-transform)
                              (dwu/commit-undo-transaction undo-id))))))))

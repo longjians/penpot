@@ -28,6 +28,8 @@
    [beicon.v2.core :as rx]
    [potok.v2.core :as ptk]))
 
+;; If anything a translation can mutate is added here, drop the
+;; `(when-not translation? …)` guard in `update-shapes` below.
 (def ^:private update-layout-attr? #{:hidden})
 
 (defn- add-undo-group
@@ -74,8 +76,9 @@
               (map :id))
 
              update-layout-ids
-             (->> (into [] xf-update-layout ids)
-                  (not-empty))
+             (when-not translation?
+               (->> (into [] xf-update-layout ids)
+                    (not-empty)))
 
              changes
              (-> (pcb/empty-changes it page-id)
@@ -88,7 +91,8 @@
                                               :changed-sub-attr changed-sub-attr
                                               :ignore-tree ignore-tree
                                               :ignore-touched ignore-touched
-                                              :with-objects? with-objects?})
+                                              :with-objects? with-objects?
+                                              :translation? translation?})
                  (cond-> undo-group
                    (pcb/set-undo-group undo-group))
                  (pcb/set-translation? translation?))
