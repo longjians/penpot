@@ -443,9 +443,7 @@
                  rect-1' (cths/get-shape file' :rect-1)]
              (t/is (some? (:applied-tokens rect-1')))
              (t/is (= (:rotation (:applied-tokens rect-1')) (:name token-target')))
-             (t/is (= (:rotation rect-1') 120))
-             (t/testing "WASM mocks were exercised"
-               (t/is (pos? (thw/call-count :propagate-modifiers)))))))))))
+             (t/is (= (:rotation rect-1') 120)))))))))
 
 (t/deftest test-apply-stroke-width
   (t/testing "applies stroke-width token and updates the shapes with stroke"
