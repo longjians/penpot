@@ -73,8 +73,7 @@
       nil)))
 
 (mf/defc shape-options*
-  {::mf/wrap [#(mf/throttle % 100)]
-   ::mf/private true}
+  {::mf/private true}
   [{:keys [shapes shapes-with-children selected page-id file-id libraries]}]
   (if (= 1 (count selected))
     [:> single-shape-options*

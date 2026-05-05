@@ -22,6 +22,14 @@
   (or ^boolean (kbd/keyboard-event? event)
       ^boolean (mse/mouse-event? event)))
 
+;; Live preview state for an interactive transform. Read via the
+;; RAF-coalesced atoms in `app.main.refs`.
+(defonce wasm-modifiers
+  (rx/behavior-subject nil))
+
+(defonce workspace-selrect
+  (rx/behavior-subject nil))
+
 ;; --- Derived streams
 
 (defonce ^:private pointer
