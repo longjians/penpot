@@ -13,7 +13,7 @@
    [app.util.i18n :refer [tr]]
    [app.util.storage :as storage]
    [beicon.v2.core :as rx]
-   [clojure.string :as str]
+   [cuerdas.core :as str]
    [potok.v2.core :as ptk]))
 
 (def ^:private nitrate-entry-active-key ::nitrate-entry-active)
@@ -75,31 +75,25 @@
   (let [href (dm/str "/control-center/licenses/billing?callback=" (js/encodeURIComponent go-to-subscription-url))]
     (st/emit! (rt/nav-raw :href href))))
 
-(def nitrate-success-token "subscribed-to-penpot-nitrate")
 (def nitrate-checkout-error-token "nitrate-checkout-error")
 (def nitrate-checkout-finish-error-token "nitrate-checkout-finish-error")
 (def nitrate-checkout-cancelled-token "nitrate-checkout-cancelled")
 
 (defn- append-query-param
   [url key value]
-  (let [parsed   (u/uri url)
+  (let [assoc-q  (fn [u]
+                   (update u :query
+                           (fn [q]
+                             (-> (u/query-string->map (or q ""))
+                                 (assoc (name key) value)
+                                 u/map->query-string))))
+        parsed   (u/uri url)
         fragment (:fragment parsed)]
     (if (str/blank? fragment)
+      (str (assoc-q parsed))
       (-> parsed
-          (update :query (fn [q]
-                           (-> (u/query-string->map (or q ""))
-                               (assoc (name key) value)
-                               u/map->query-string)))
-          str)
-      (let [new-frag (-> (u/parse fragment)
-                         (update :query (fn [q]
-                                          (-> (u/query-string->map (or q ""))
-                                              (assoc (name key) value)
-                                              u/map->query-string)))
-                         str)]
-        (-> parsed
-            (assoc :fragment new-frag)
-            str)))))
+          (assoc :fragment (str (assoc-q (u/parse fragment))))
+          str))))
 
 (defn build-nitrate-callback-urls
   "Build the success/error/cancel callback URLs from a base URL by appending
@@ -107,7 +101,7 @@
   [base-url]
   (let [build (fn [token]
                 (append-query-param base-url :subscription token))]
-    {:success-callback      (build nitrate-success-token)
+    {:success-callback      (build "subscribed-to-penpot-nitrate")
      :error-callback        (build nitrate-checkout-error-token)
      :finish-error-callback (build nitrate-checkout-finish-error-token)
      :cancel-callback       (build nitrate-checkout-cancelled-token)}))

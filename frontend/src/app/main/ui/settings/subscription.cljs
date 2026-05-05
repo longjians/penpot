@@ -411,7 +411,7 @@
         show-subscription-success-modal?
         (or (= params-subscription "subscribed-to-penpot-unlimited")
             (= params-subscription "subscribed-to-penpot-enterprise")
-            (= params-subscription dnt/nitrate-success-token))
+            (= params-subscription "subscribed-to-penpot-nitrate"))
 
         nitrate-toast-message
         (condp = params-subscription
@@ -420,9 +420,9 @@
           nil)
 
         nitrate-toast-level
-        (condp = params-subscription
-          dnt/nitrate-checkout-cancelled-token :info
-          (when nitrate-toast-message :error))
+        (cond
+          (= params-subscription dnt/nitrate-checkout-cancelled-token) :info
+          (some? nitrate-toast-message)                                :error)
 
         show-nitrate-start-error?
         (= params-subscription dnt/nitrate-checkout-error-token)
@@ -513,6 +513,8 @@
                      nitrate-toast-level
                      subscription]
       (when ^boolean authenticated?
+        (when ^boolean show-nitrate-start-error?
+          (reset! nitrate-start-error* true))
         (cond
           (some? nitrate-toast-message)
           (st/emit!
@@ -523,9 +525,7 @@
            (rt/nav :settings-subscription {} {::rt/replace true}))
 
           ^boolean show-nitrate-start-error?
-          (do
-            (reset! nitrate-start-error* true)
-            (st/emit! (rt/nav :settings-subscription {} {::rt/replace true})))
+          (st/emit! (rt/nav :settings-subscription {} {::rt/replace true}))
 
           ^boolean show-trial-subscription-modal?
 
@@ -543,7 +543,7 @@
 
           ^boolean show-subscription-success-modal?
           (st/emit!
-           (if (= params-subscription dnt/nitrate-success-token)
+           (if (= params-subscription "subscribed-to-penpot-nitrate")
              (modal/show :nitrate-success {})
              (modal/show :subscription-success
                          {:subscription-name (if (= params-subscription "subscribed-to-penpot-unlimited")
