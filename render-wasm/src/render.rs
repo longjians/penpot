@@ -468,15 +468,6 @@ impl RenderState {
         true
     }
 
-    fn is_recortable_for_drag_crop(&self, shape: &Shape) -> bool {
-        // "Recortable" (happy path): the shape is fully represented by the pixels
-        // already in Backbuffer and can be moved as a texture during drag.
-        shape.blur.is_none()
-            && shape.shadows.is_empty()
-            && (shape.opacity - 1.0).abs() <= 1e-4
-            && shape.blend_mode().0 == skia::BlendMode::SrcOver
-    }
-
     pub fn try_new(width: i32, height: i32) -> Result<RenderState> {
         // This needs to be done once per WebGL context.
         let mut gpu_state = GpuState::try_new()?;
@@ -1649,7 +1640,7 @@ impl RenderState {
             if shape.hidden {
                 continue;
             }
-            if !self.is_recortable_for_drag_crop(shape) {
+            if !shape.is_recortable_for_drag_crop() {
                 continue;
             }
 
@@ -3024,17 +3015,39 @@ impl RenderState {
                             dst_doc_rect.height() * scale,
                         );
 
-                        // let canvas = self.surfaces.canvas_and_mark_dirty(target_surface);
                         let canvas = self.surfaces.canvas(target_surface);
                         canvas.save();
                         canvas.reset_matrix();
+                        if let Some(clip_path) = element.drag_crop_clip_path() {
+                            let mut doc_to_tile = Matrix::new_identity();
+                            doc_to_tile.pre_scale((scale, scale), None);
+                            doc_to_tile.pre_translate((
+                                translation.0 * scale,
+                                translation.1 * scale,
+                            ));
+                            let clip_path = clip_path.make_transform(&doc_to_tile);
+                            canvas.clip_path(&clip_path, skia::ClipOp::Intersect, true);
+                        }
                         canvas.draw_image_rect(
                             crop_image,
                             None,
                             dst_tile_rect,
                             &skia::Paint::default(),
                         );
+                        
                         canvas.restore();
+
+                        // Outline for shapes composited from the backbuffer crop (tile space).
+                        canvas.save();
+                        canvas.reset_matrix();
+                        let mut border = skia::Paint::default();
+                        border.set_style(skia::PaintStyle::Stroke);
+                        border.set_color(skia::Color::from_argb(255, 0, 200, 255));
+                        border.set_stroke_width(5.);
+                        border.set_anti_alias(true);
+                        canvas.draw_rect(dst_tile_rect, &border);
+                        canvas.restore();
+
                     }
                     continue;
                 }
