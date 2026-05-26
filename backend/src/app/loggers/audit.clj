@@ -60,10 +60,11 @@
 
 (defn profile->props
   [profile]
-  (-> profile
-      (select-keys profile-props)
-      (merge (:props profile))
-      (d/without-nils)))
+  (let [props (:props profile)]
+    (-> profile
+        (select-keys profile-props)
+        (cond-> (map? props) (merge props))
+        (d/without-nils))))
 
 (def reserved-props
   #{:session-id
@@ -73,12 +74,14 @@
 
 (defn clean-props
   [props]
-  (into {}
-        (comp
-         (d/without-nils)
-         (d/without-qualified)
-         (remove #(contains? reserved-props (key %))))
-        props))
+  (if (map? props)
+    (into {}
+          (comp
+           (d/without-nils)
+           (d/without-qualified)
+           (remove #(contains? reserved-props (key %))))
+          props)
+    props))
 
 (defn get-external-session-id
   [request]
