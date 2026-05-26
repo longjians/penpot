@@ -35,12 +35,16 @@
 
 ;; --- Mutation: Create Team Invitation
 
-(def sql:upsert-team-invitation
+(def sql:insert-team-invitation
   "insert into team_invitation(id, team_id, email_to, created_by, role, valid_until)
    values (?, ?, ?, ?, ?, ?)
-       on conflict(team_id, email_to) do
-          update set role = ?, valid_until = ?, updated_at = now()
    returning *")
+
+(def sql:update-team-invitation
+  "update team_invitation
+      set role = ?, valid_until = ?, updated_at = now()
+    where team_id = ? and email_to = ?
+    returning *")
 
 (defn- create-invitation-token
   [cfg {:keys [profile-id valid-until team-id member-id member-email role]}]
@@ -130,12 +134,20 @@
 
         (let [id         (uuid/next)
               expire     (ct/in-future "168h") ;; 7 days
-              invitation (db/exec-one! conn [sql:upsert-team-invitation id
-                                             (:id team) (str/lower email)
-                                             (:id profile)
-                                             (name role) expire
-                                             (name role) expire])
-              updated?   (not= id (:id invitation))
+              existing   (db/get* conn :team-invitation
+                                  {:team-id (:id team)
+                                   :email-to (str/lower email)})
+              invitation (if existing
+                           (db/exec-one! conn [sql:update-team-invitation
+                                               (name role) expire
+                                               (:id team) (str/lower email)])
+                           (db/exec-one! conn [sql:insert-team-invitation id
+                                               (:id team) (str/lower email)
+                                               (:id profile)
+                                               (name role) expire]))
+              updated?   (if existing
+                           true
+                           false)
               profile-id (:id profile)
               tprops     {:profile-id profile-id
                           :invitation-id (:id invitation)
@@ -534,12 +546,11 @@
                 :code :request-already-sent
                 :hint "you have already made a request to join this team less than 24 hours ago"))))
 
-(def ^:private sql:upsert-team-access-request
-  "INSERT INTO team_access_request (id, team_id, requester_id, valid_until, auto_join_until)
-   VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT (team_id, requester_id)
-       DO UPDATE SET valid_until = ?, auto_join_until = ?, updated_at = now()
-   RETURNING *")
+(def ^:private sql:update-team-access-request
+  "UPDATE team_access_request
+      SET valid_until = ?, auto_join_until = ?, updated_at = now()
+    WHERE team_id = ? AND requester_id = ?
+    RETURNING *")
 
 (defn- upsert-team-access-request
   "Create or update team access request for provided team and profile-id"
@@ -547,11 +558,20 @@
   (check-existing-team-access-request cfg team-id requester-id)
   (let [valid-until     (ct/in-future {:hours 24})
         auto-join-until (ct/in-future {:days 7})
-        request-id      (uuid/next)]
-    (db/exec-one! conn [sql:upsert-team-access-request
-                        request-id team-id requester-id
-                        valid-until auto-join-until
-                        valid-until auto-join-until])))
+        request-id      (uuid/next)
+        existing (db/get* conn :team-access-request
+                          {:team-id team-id
+                           :requester-id requester-id})]
+    (if existing
+      (db/exec-one! conn [sql:update-team-access-request
+                          valid-until auto-join-until
+                          team-id requester-id])
+      (db/insert! conn :team-access-request
+                  {:id request-id
+                   :team-id team-id
+                   :requester-id requester-id
+                   :valid-until valid-until
+                   :auto-join-until auto-join-until}))))
 
 (defn- get-file-for-team-access-request
   "A specific method for obtain a file with name and page-id used for
