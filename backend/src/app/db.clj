@@ -36,13 +36,13 @@
    java.sql.Connection
    java.sql.PreparedStatement
    java.sql.Savepoint
-   org.postgresql.PGConnection
-   org.postgresql.geometric.PGpoint
-   org.postgresql.jdbc.PgArray
-   org.postgresql.largeobject.LargeObject
-   org.postgresql.largeobject.LargeObjectManager
-   org.postgresql.util.PGInterval
-   org.postgresql.util.PGobject))
+   com.huawei.opengauss.jdbc.geometric.PGpoint
+   com.huawei.opengauss.jdbc.jdbc.PgArray
+   com.huawei.opengauss.jdbc.largeobject.LargeObject
+   com.huawei.opengauss.jdbc.largeobject.LargeObjectManager
+   com.huawei.opengauss.jdbc.PGConnection
+   com.huawei.opengauss.jdbc.util.PGInterval
+   com.huawei.opengauss.jdbc.util.PGobject))
 
 (def ^:dynamic *conn* nil)
 
@@ -104,8 +104,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def initsql
-  (str "SET statement_timeout = 300000;\n"
-       "SET idle_in_transaction_session_timeout = 300000;"))
+  "SET statement_timeout = 300000")
 
 (defn- create-datasource-config
   [{:keys [::uri] :as cfg}]
@@ -192,7 +191,7 @@
 
 (defn lobj-manager
   [conn]
-  (let [conn (unwrap conn org.postgresql.PGConnection)]
+  (let [conn (unwrap conn com.huawei.opengauss.jdbc.PGConnection)]
     (.getLargeObjectAPI ^PGConnection conn)))
 
 (defn lobj-create
@@ -271,6 +270,8 @@
   [opts]
   (set/rename-keys opts params-mapping))
 
+(declare duplicate-key-error?)
+
 (def ^:private default-insert-opts
   (assoc sql/default-opts :return-keys true))
 
@@ -304,8 +305,17 @@
         sql  (sql/insert table params opts)
         opts (if (empty? opts)
                default-insert-opts
-               (into default-insert-opts (rename-opts opts)))]
-    (jdbc/execute-one! conn sql opts)))
+               (into default-insert-opts (rename-opts opts)))
+        conflict-do-nothing? (or (::sql/on-conflict-do-nothing opts)
+                                 (::on-conflict-do-nothing? opts))]
+    (if conflict-do-nothing?
+      (try
+        (jdbc/execute-one! conn sql opts)
+        (catch Exception e
+          (if (duplicate-key-error? (ex-cause e))
+            nil
+            (throw e))))
+      (jdbc/execute-one! conn sql opts))))
 
 (defn insert-many!
   "An optimized version of `insert!` that perform insertion of multiple
@@ -320,8 +330,17 @@
         opts (if (empty? opts)
                default-insert-opts
                (into default-insert-opts (rename-opts opts)))
-        opts (update opts :return-keys boolean)]
-    (jdbc/execute! conn sql opts)))
+        opts (update opts :return-keys boolean)
+        conflict-do-nothing? (or (::sql/on-conflict-do-nothing opts)
+                                 (::on-conflict-do-nothing? opts))]
+    (if conflict-do-nothing?
+      (try
+        (jdbc/execute! conn sql opts)
+        (catch Exception e
+          (if (duplicate-key-error? (ex-cause e))
+            nil
+            (throw e))))
+      (jdbc/execute! conn sql opts))))
 
 (defn update!
   "A helper that build an UPDATE SQL statement and executes it.
@@ -506,7 +525,7 @@
 
 (defn create-array
   [conn type objects]
-  (let [^PGConnection conn (unwrap conn org.postgresql.PGConnection)]
+  (let [^PGConnection conn (unwrap conn com.huawei.opengauss.jdbc.PGConnection)]
     (if (coll? objects)
       (.createArrayOf conn ^String type (into-array Object objects))
       (.createArrayOf conn ^String type objects))))
@@ -521,7 +540,7 @@
 
 (defn pginterval
   [data]
-  (org.postgresql.util.PGInterval. ^String data))
+  (com.huawei.opengauss.jdbc.util.PGInterval. ^String data))
 
 (defn savepoint
   ([^Connection conn]
@@ -632,7 +651,7 @@
 (defn inet
   [ip-addr]
   (when ip-addr
-    (doto (org.postgresql.util.PGobject.)
+    (doto (com.huawei.opengauss.jdbc.util.PGobject.)
       (.setType "inet")
       (.setValue (str ip-addr)))))
 
@@ -647,7 +666,7 @@
   "Encode as transit json."
   [data]
   (when data
-    (doto (org.postgresql.util.PGobject.)
+    (doto (com.huawei.opengauss.jdbc.util.PGobject.)
       (.setType "jsonb")
       (.setValue (t/encode-str data {:type :json-verbose})))))
 
@@ -655,7 +674,7 @@
   "Encode as plain json."
   [data]
   (when data
-    (doto (org.postgresql.util.PGobject.)
+    (doto (com.huawei.opengauss.jdbc.util.PGobject.)
       (.setType "jsonb")
       (.setValue (json/encode data)))))
 

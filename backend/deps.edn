@@ -39,7 +39,6 @@
   metosin/reitit-core {:mvn/version "0.9.1"}
   nrepl/nrepl {:mvn/version "1.4.0"}
 
-  org.postgresql/postgresql {:mvn/version "42.7.9"}
   org.xerial/sqlite-jdbc {:mvn/version "3.50.3.0"}
 
   com.zaxxer/HikariCP {:mvn/version "7.0.2"}
@@ -68,7 +67,7 @@
   pretty-spec/pretty-spec {:mvn/version "0.1.4"}
   software.amazon.awssdk/s3 {:mvn/version "2.41.21"}}
 
- :paths ["src" "resources" "target/classes"]
+ :paths ["src" "resources" "target/classes" "lib/opengaussjdbc.jar"]
  :aliases
  {:dev
   {:extra-deps
