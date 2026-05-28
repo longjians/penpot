@@ -6,7 +6,7 @@ networks:
         - subnet: 172.177.9.0/24
 
 volumes:
-  postgres_data_pg16:
+  opengauss_data:
   user_data:
   minio_data:
   valkey_data:
@@ -21,7 +21,7 @@ services:
     stop_signal: SIGINT
 
     depends_on:
-      - postgres
+      - opengauss
       - redis
       # - keycloak
 
@@ -59,6 +59,10 @@ services:
 
     environment:
       - EXTERNAL_UID=${CURRENT_USER_ID}
+      # Database setup
+      - PENPOT_DATABASE_URI=opengauss://opengauss:5432/penpot?preferQueryMode=simple
+      - PENPOT_DATABASE_USERNAME=penpot
+      - PENPOT_DATABASE_PASSWORD=Penpot@123
       # SMTP setup
       - PENPOT_SMTP_ENABLED=true
       - PENPOT_SMTP_DEFAULT_FROM=no-reply@example.com
@@ -104,24 +108,21 @@ services:
         aliases:
           - minio
 
-  postgres:
-    image: postgres:16.8
-    command: postgres -c config_file=/etc/postgresql.conf
+  opengauss:
+    image: "opengauss/opengauss:5.0.0"
     restart: always
     stop_signal: SIGINT
     environment:
-      - POSTGRES_INITDB_ARGS=--data-checksums
-      - POSTGRES_DB=penpot
-      - POSTGRES_USER=penpot
-      - POSTGRES_PASSWORD=penpot
+      - GS_PASSWORD=Penpot@123
+      - GS_USERNAME=penpot
+      - GS_DBNAME=penpot
     volumes:
-      - ./files/postgresql.conf:/etc/postgresql.conf:z
-      - ./files/postgresql_init.sql:/docker-entrypoint-initdb.d/init.sql:z
-      - postgres_data_pg16:/var/lib/postgresql/data
+      - ./files/opengauss_init.sql:/docker-entrypoint-initdb.d/init.sql:z
+      - opengauss_data:/var/lib/opengauss/data
     networks:
       default:
         aliases:
-          - postgres
+          - opengauss
 
   redis:
     image: valkey/valkey:8.1
