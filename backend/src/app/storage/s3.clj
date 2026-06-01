@@ -21,8 +21,7 @@
    [clojure.java.io :as io]
    [datoteka.fs :as fs]
    [integrant.core :as ig]
-   [promesa.core :as p]
-   [promesa.exec :as px])
+   [promesa.core :as p])
   (:import
    java.io.FilterInputStream
    java.io.InputStream
@@ -30,14 +29,11 @@
    java.nio.file.Path
    java.time.Duration
    java.util.Collection
-   java.util.Optional
    java.util.concurrent.atomic.AtomicLong
-   org.reactivestreams.Subscriber
    software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider
    software.amazon.awssdk.core.ResponseBytes
    software.amazon.awssdk.core.async.AsyncRequestBody
    software.amazon.awssdk.core.async.AsyncResponseTransformer
-   software.amazon.awssdk.core.async.BlockingInputStreamAsyncRequestBody
    software.amazon.awssdk.core.client.config.ClientAsyncConfiguration
    software.amazon.awssdk.http.nio.netty.NettyNioAsyncHttpClient
    software.amazon.awssdk.http.nio.netty.SdkEventLoopGroup
@@ -252,34 +248,17 @@
         (.credentialsProvider creds-provider)
         (.build))))
 
-(defn- write-input-stream
-  [delegate input]
-  (try
-    (.writeInputStream ^BlockingInputStreamAsyncRequestBody delegate
-                       ^InputStream input)
-    (catch Throwable cause
-      (l/error :hint "encountered error while writing input stream to service"
-               :cause cause))
-    (finally
-      (.close ^InputStream input))))
-
 (defn- make-request-body
+  "Creates an AsyncRequestBody from content object.
+  Uses fromInputStream to properly handle SHA256 content checksum."
   [counter content]
-  (let [size (impl/get-size content)]
-    (reify
-      AsyncRequestBody
-      (contentLength [_]
-        (Optional/of (long size)))
-
-      (^void subscribe [_ ^Subscriber subscriber]
-        (let [delegate (AsyncRequestBody/forBlockingInputStream (long size))
-              input    (io/input-stream content)]
-
-          (px/thread-call (partial write-input-stream delegate input)
-                          {:name (str "penpot/storage/" (.getAndIncrement ^AtomicLong counter))})
-
-          (.subscribe ^BlockingInputStreamAsyncRequestBody delegate
-                      ^Subscriber subscriber))))))
+  (let [size  (impl/get-size content)
+        input (io/input-stream content)]
+    (try
+      (AsyncRequestBody/fromInputStream ^InputStream input (long size))
+      (catch Throwable cause
+        (.close ^InputStream input)
+        (throw cause)))))
 
 (defn- put-object
   [{:keys [::client ::bucket ::prefix ::counter]} {:keys [id] :as object} content]
