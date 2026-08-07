@@ -111,17 +111,21 @@ BEGIN
             PRIMARY KEY (file_id, library_file_id)
         );
 
-        -- 从旧表迁移数据 (幂等: 已有数据不会重复插入)
+        -- 从旧表迁移数据 (幂等: 使用 NOT EXISTS 替代 ON CONFLICT 兼容 GaussDB)
         INSERT INTO file_library_sync (file_id, library_file_id, synced_at)
-            SELECT file_id, library_file_id, synced_at
-              FROM file_library_rel
-              ON CONFLICT (file_id, library_file_id) DO NOTHING;
+            SELECT flr.file_id, flr.library_file_id, flr.synced_at
+              FROM file_library_rel flr
+             WHERE NOT EXISTS (
+                     SELECT 1 FROM file_library_sync fls
+                      WHERE fls.file_id = flr.file_id
+                        AND fls.library_file_id = flr.library_file_id
+                   );
+
+        -- 为旧表 synced_at 列添加废弃注释
+        EXECUTE 'COMMENT ON COLUMN file_library_rel.synced_at IS '
+                || quote_literal('DEPRECATED: will be removed in a future migration; kept temporarily for backward compatibility');
     END IF;
 END $$;
-
--- 为旧表 synced_at 列添加废弃注释 (GaussDB 兼容语法)
-COMMENT ON COLUMN file_library_rel.synced_at IS
-    'DEPRECATED: will be removed in a future migration; kept temporarily for backward compatibility';
 
 
 -- ============================================================================
